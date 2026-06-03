@@ -1,0 +1,85 @@
+# 环境变量
+.env
+.env.local
+rag_qa/rag_assesment/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+.claude/
+
+# 日志 & 数据库
+*.log
+logs/
+*.db
+*.sqlite
+
+# 模型文件（太大，通过 README 指引下载）
+rag_qa/models/
+rag_qa/core/bert_outputs/
+rag_qa/core/bert_results/
+rag_qa/core/output/
+rag_qa/core/tempfile_*
+*.safetensors
+*.pth
+*.bin
+
+# Docker 数据
+docker/mysql/mysql_data/
+
+# CSV（只保留FAQ种子数据）
+*.csv
+!mysql_qa/data/*.csv
+
+# 媒体/样本大文件
+*.pptx
+*.png
+*.jpg
+*.pdf
+*.pkl
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 面试笔记/参考文档（不上传）
+data/
+static/old_index.html
+*.md
+!README.md
+notebooks/
+rag_qa/data/
+rag_qa/classify_data/*.json
+rag_qa/classify_data/*.jsonl
+rag_qa/classify_data/*.md
+demo/
+rag_qa/rag_assesment/
+old_main.py
+config.ini
+mysql_qa/retrieval/bm25_search_demo.py
+rag_qa/demo_parse_args.py
+
+# 训练/开发/测试文件（不上传）
+rag_qa/core/train_bert.py
+rag_qa/core/chatgpt_train_bert.py
+rag_qa/core/bert_query_classifier_new.py
+rag_qa/train.sh
+rag_qa/document_loaders/demo_markdown.py
+rag_qa/document_loaders/review.py
+rag_qa/text_spliter/review.py
+rag_qa/classify_data/handler.py
+rag_qa/classify_data/*.txt
+new_main.py
+old_main.py
+locust_test.py
+test_api.py
+test_config.py
+docker/milvus_redis/
+docker/mysql/docker-compose.yml

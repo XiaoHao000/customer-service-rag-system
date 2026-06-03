@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能客服知识库系统 — RAG + BERT 混合检索</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --surface: #ffffff;
+            --surface-alt: #f8fafc;
+            --border: #e2e8f0;
+            --text: #1e293b;
+            --text-secondary: #64748b;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --radius: 10px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
+            background: #f1f5f9;
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ─── Header ─── */
+        .app-header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-shrink: 0;
+        }
+        .app-logo {
+            width: 38px; height: 38px;
+            background: var(--primary);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-weight: 700; font-size: 18px;
+        }
+        .app-title { font-size: 18px; font-weight: 700; }
+        .app-subtitle { font-size: 12px; color: var(--text-secondary); }
+        .app-badges { display: flex; gap: 6px; margin-left: auto; }
+        .badge {
+            font-size: 11px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            background: var(--surface-alt);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+        .badge.live { background: #ecfdf5; color: var(--success); border-color: #a7f3d0; }
+
+        /* ─── Layout ─── */
+        .layout {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* ─── Sidebar ─── */
+        .sidebar {
+            width: 260px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+        .sidebar-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .btn {
+            border: 1px solid var(--border);
+            background: var(--surface);
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--text);
+            transition: all 0.15s;
+            display: flex; align-items: center; gap: 6px;
+            justify-content: center;
+        }
+        .btn:hover { background: var(--surface-alt); }
+        .btn.primary { background: var(--primary); color: white; border-color: var(--primary); }
+        .btn.primary:hover { background: var(--primary-dark); }
+        .sidebar-body { flex: 1; overflow-y: auto; padding: 12px; }
+        .sidebar-body .empty { font-size: 12px; color: var(--text-secondary); text-align: center; padding: 24px 0; }
+        .history-item {
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            margin-bottom: 4px;
+            border: 1px solid transparent;
+            transition: all 0.15s;
+        }
+        .history-item:hover { background: var(--surface-alt); border-color: var(--border); }
+        .history-item .q { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .history-item .a { color: var(--text-secondary); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+        .sidebar-footer {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border);
+            font-size: 11px;
+            color: var(--text-secondary);
+            word-break: break-all;
+        }
+
+        /* ─── Main Chat ─── */
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            background: var(--surface);
+            margin: 8px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+        .chat-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 24px;
+            scroll-behavior: smooth;
+        }
+        .chat-body .welcome {
+            text-align: center;
+            padding: 48px 0;
+            color: var(--text-secondary);
+        }
+        .chat-body .welcome .icon { font-size: 48px; margin-bottom: 16px; }
+        .chat-body .welcome h2 { font-size: 20px; margin-bottom: 8px; color: var(--text); }
+        .chat-body .welcome .hints { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 16px; }
+        .hint-btn {
+            font-size: 12px; padding: 6px 14px;
+            border-radius: 999px; border: 1px solid var(--border);
+            background: var(--surface); cursor: pointer; transition: all 0.15s;
+        }
+        .hint-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+        /* ─── Messages ─── */
+        .msg { margin-bottom: 16px; display: flex; flex-direction: column; animation: fadeUp 0.2s ease; }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .msg.user { align-items: flex-end; }
+        .msg.assistant { align-items: flex-start; }
+        .msg .bubble {
+            max-width: 78%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            line-height: 1.65;
+            font-size: 14px;
+            word-break: break-word;
+        }
+        .msg.user .bubble { background: var(--primary); color: white; border-bottom-right-radius: 4px; }
+        .msg.assistant .bubble { background: var(--surface-alt); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+
+        /* Markdown inside bubbles */
+        .msg .bubble p { margin: 0 0 8px; }
+        .msg .bubble p:last-child { margin: 0; }
+        .msg .bubble pre {
+            background: #1e293b; color: #e2e8f0;
+            padding: 14px 16px; border-radius: 8px;
+            overflow-x: auto; font-size: 13px; margin: 10px 0;
+        }
+        .msg .bubble code { font-size: 13px; }
+        .msg .bubble :not(pre) > code {
+            background: rgba(0,0,0,0.06); padding: 2px 6px; border-radius: 4px; font-size: 13px;
+        }
+        .msg .bubble table { border-collapse: collapse; margin: 8px 0; width: 100%; font-size: 13px; }
+        .msg .bubble th, .msg .bubble td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+        .msg .bubble th { background: var(--surface-alt); font-weight: 600; }
+        .msg .bubble ul, .msg .bubble ol { padding-left: 20px; margin: 6px 0; }
+
+        .msg .meta { font-size: 11px; color: var(--text-secondary); margin-top: 4px; padding: 0 4px; }
+
+        /* Typing dots */
+        .typing { display: inline-flex; gap: 4px; padding: 12px 16px; }
+        .typing span { width: 7px; height: 7px; border-radius: 50%; background: #94a3b8; animation: dot 1.2s infinite; }
+        .typing span:nth-child(2) { animation-delay: 0.2s; }
+        .typing span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes dot { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+
+        /* ─── Preset queries bar ─── */
+        .preset-bar {
+            padding: 8px 16px 4px 16px;
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: flex-start;
+        }
+        .preset-bar .preset-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            padding: 4px 0;
+            flex-basis: 100%;
+            margin-bottom: 2px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .preset-bar .preset-label .cat {
+            font-size: 10px;
+            padding: 1px 6px;
+            border-radius: 999px;
+            font-weight: 600;
+        }
+        .preset-bar .preset-label .cat.fast { background: #dbeafe; color: #1e40af; }
+        .preset-bar .preset-label .cat.deep { background: #fef3c7; color: #92400e; }
+        .preset-chip {
+            padding: 4px 10px;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            background: var(--surface-alt);
+            color: var(--text-secondary);
+            font-size: 11px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.15s;
+            max-width: 180px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .preset-chip:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            background: #eff6ff;
+        }
+
+        /* ─── Input ─── */
+        .chat-footer {
+            border-top: 1px solid var(--border);
+            padding: 14px 20px;
+            background: var(--surface);
+        }
+        .input-row { display: flex; gap: 10px; align-items: center; }
+        .input-row select {
+            padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border);
+            font-size: 13px; background: var(--surface); cursor: pointer; min-width: 90px;
+        }
+        .input-row input {
+            flex: 1; padding: 10px 14px; border: 1px solid var(--border);
+            border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.15s;
+        }
+        .input-row input:focus { border-color: var(--primary); }
+        .input-row button {
+            width: 42px; height: 42px; border-radius: 8px; border: none;
+            background: var(--primary); color: white; cursor: pointer; font-size: 16px;
+            flex-shrink: 0; transition: background 0.15s;
+        }
+        .input-row button:hover { background: var(--primary-dark); }
+        .input-row button:disabled { background: #94a3b8; cursor: not-allowed; }
+
+        /* ─── Tier badge ─── */
+        .tier-tag {
+            font-size: 11px; padding: 2px 8px; border-radius: 999px;
+            display: inline-block; margin-right: 6px;
+        }
+        .tier-tag.fast { background: #dbeafe; color: #1e40af; }
+        .tier-tag.deep { background: #fef3c7; color: #92400e; }
+
+        /* ─── Responsive ─── */
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .main { margin: 4px; }
+            .msg .bubble { max-width: 92%; }
+        }
+    </style>
+</head>
+<body>
+
+<header class="app-header">
+    <div class="app-logo">SK</div>
+    <div>
+        <div class="app-title">智能客服知识库</div>
+        <div class="app-subtitle">BM25 毫秒匹配 + RAG 深度推理 · 双通道架构</div>
+    </div>
+    <div class="app-badges">
+        <span class="badge live"><i class="fas fa-circle" style="font-size:6px;vertical-align:middle;margin-right:3px;"></i>在线</span>
+        <span class="badge">Milvus 2.4</span>
+        <span class="badge">Qwen3-Max</span>
+        <span class="badge">BGE-M3</span>
+    </div>
+</header>
+
+<div class="layout">
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <button class="btn primary" onclick="newSession()"><i class="fas fa-plus"></i> 新会话</button>
+            <button class="btn" onclick="clearCurrentHistory()"><i class="fas fa-trash"></i> 清除记录</button>
+        </div>
+        <div class="sidebar-body" id="historyList">
+            <div class="empty">暂无历史会话</div>
+        </div>
+        <div class="sidebar-footer" id="sessionInfo"></div>
+    </aside>
+
+    <main class="main">
+        <div class="chat-body" id="chatBody">
+            <div class="welcome">
+                <div class="icon">📚</div>
+                <h2>智能客服知识库系统</h2>
+                <p>覆盖企业微信 · 钉钉 · CRM · ERP 等产品线，支持 FAQ 精准匹配与 RAG 深度推理</p>
+                <div class="hints">
+                    <button class="hint-btn" onclick="askHint(this)">企业微信怎么设置自动回复？</button>
+                    <button class="hint-btn" onclick="askHint(this)">钉钉考勤打卡定位不准怎么办？</button>
+                    <button class="hint-btn" onclick="askHint(this)">CRM客户数据导入乱码怎么处理？</button>
+                    <button class="hint-btn" onclick="askHint(this)">公司网络频繁断线该怎么排查？</button>
+                    <button class="hint-btn" onclick="askHint(this)">打印机连不上，打印出来还有黑条怎么解决</button>
+                    <button class="hint-btn" onclick="askHint(this)">ERP采购审批流程怎么配置，库存盘点不一致怎么办</button>
+                    <button class="hint-btn" onclick="askHint(this)">飞书和钉钉哪个更适合我们公司使用？</button>
+                    <button class="hint-btn" onclick="askHint(this)">VPN连不上内网，邮件也发不出去怎么办</button>
+                    <button class="hint-btn" onclick="askHint(this)">我想用Python写一个自动发邮件的脚本</button>
+                    <button class="hint-btn" onclick="askHint(this)">如何保障企业数据安全</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="preset-bar">
+            <div class="preset-label"><span class="cat fast">BM25 快速</span> 精确匹配 · 毫秒响应</div>
+            <span class="preset-chip" onclick="document.getElementById('chatInput').value=this.textContent;sendMessage()">企业微信怎么设置自动回复</span>
+            <span class="preset-chip" onclick="document.getElementById('chatInput').value=this.textContent;sendMessage()">钉钉打卡定位不准</span>
+            <span class="preset-chip" onclick="document.getElementById('chatInput').value=this.textContent;sendMessage()">CRM数据导入乱码</span>
+            <span class="preset-chip" onclick="document.getElementById('chatInput').value=this.textContent;sendMessage()">公司网络频繁断线排查</span>
+            <span class="preset-chip" onclick="document.getElementById('chatInput').value=this.textContent;sendMessage()">VPN连接后无法访问内网</span>
+            <div class="preset-label" style="margin-top:4px;"><span class="cat deep">RAG 推理</span> 语义理解 · 流式生成</div>
+            <span class="preset-chip" onclick="document.getElementById('chatInput').value=this.textContent;sendMessage()">打印机连不上还有黑条怎么解决</span>
+            <span class="preset-chip" onclick="document.getElementById('chatInput').value=this.textContent;sendMessage()">飞书和钉钉哪个更适合我们公司</span>
+            <span class="preset-chip" onclick="document.getElementById('chatInput').value=this.textContent;sendMessage()">ERP采购审批和库存盘点都有问题</span>
+            <span class="preset-chip" onclick="document.getElementById('chatInput').value=this.textContent;sendMessage()">如何保障企业数据安全</span>
+            <span class="preset-chip" onclick="document.getElementById('chatInput').value=this.textContent;sendMessage()">用Python写自动发邮件脚本</span>
+        </div>
+
+        <div class="chat-footer">
+            <div class="input-row">
+                <select id="sourceFilter">
+                    <option value="">全部产品线</option>
+                </select>
+                <input id="chatInput" type="text" placeholder="输入你的问题，Enter 发送..."
+                    onkeydown="if(event.key==='Enter') sendMessage()">
+                <button id="sendBtn" onclick="sendMessage()"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script>
+// ── State ──
+let sessionId = null;
+let isBusy = false;
+let ws = null;
+
+const chatBody = document.getElementById('chatBody');
+const input = document.getElementById('chatInput');
+const sendBtn = document.getElementById('sendBtn');
+const sourceFilter = document.getElementById('sourceFilter');
+const historyList = document.getElementById('historyList');
+const sessionInfo = document.getElementById('sessionInfo');
+
+// ── Init ──
+document.addEventListener('DOMContentLoaded', async () => {
+    await newSession();
+    await loadSources();
+});
+
+async function newSession() {
+    try {
+        const r = await fetch('/api/create_session', { method: 'POST' });
+        const d = await r.json();
+        sessionId = d.session_id;
+        sessionInfo.textContent = sessionId.slice(0, 8) + '...';
+        chatBody.innerHTML = chatBody.querySelector('.welcome')?.outerHTML || '';
+        loadHistory();
+    } catch (e) { console.error(e); }
+}
+
+async function loadSources() {
+    try {
+        const r = await fetch('/api/sources');
+        const d = await r.json();
+        sourceFilter.innerHTML = '<option value="">全部产品线</option>';
+        d.sources.forEach(s => {
+            const o = document.createElement('option');
+            o.value = s; o.textContent = s;
+            sourceFilter.appendChild(o);
+        });
+    } catch (e) { console.error(e); }
+}
+
+async function loadHistory() {
+    if (!sessionId) return;
+    try {
+        const r = await fetch('/api/history/' + sessionId);
+        const d = await r.json();
+        historyList.innerHTML = '';
+        if (!d.history || d.history.length === 0) {
+            historyList.innerHTML = '<div class="empty">暂无历史会话</div>';
+            return;
+        }
+        const item = document.createElement('div');
+        item.className = 'history-item';
+        item.innerHTML = `<div class="q">${escapeHtml(d.history[0]?.question || '会话')}</div>
+                          <div class="a">共 ${d.history.length} 轮对话</div>`;
+        item.onclick = () => {
+            chatBody.innerHTML = '';
+            d.history.forEach(h => {
+                appendMsg('user', h.question);
+                appendMsg('assistant', h.answer);
+            });
+        };
+        historyList.appendChild(item);
+    } catch (e) { console.error(e); }
+}
+
+async function clearCurrentHistory() {
+    if (!sessionId) return;
+    try {
+        await fetch('/api/history/' + sessionId, { method: 'DELETE' });
+        historyList.innerHTML = '<div class="empty">暂无历史会话</div>';
+        chatBody.innerHTML = chatBody.querySelector('.welcome')?.outerHTML || '';
+    } catch (e) { console.error(e); }
+}
+
+// ── Send ──
+async function sendMessage() {
+    const query = input.value.trim();
+    if (!query || isBusy) return;
+    input.value = ''; isBusy = true;
+    sendBtn.disabled = true;
+
+    // Remove welcome
+    const welcome = chatBody.querySelector('.welcome');
+    if (welcome) welcome.remove();
+
+    appendMsg('user', query);
+    const typingEl = appendTyping();
+
+    try {
+        const r = await fetch('/api/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query, source_filter: sourceFilter.value, session_id: sessionId })
+        });
+        const d = await r.json();
+
+        typingEl.remove();
+
+        if (d.is_streaming) {
+            // RAG deep mode — WebSocket streaming
+            const bubble = appendStreamBubble();
+            await streamViaWebSocket(query, bubble);
+        } else {
+            // BM25 fast mode
+            appendMsg('assistant', d.answer, { tier: 'fast', time: d.processing_time });
+        }
+
+        loadHistory();
+    } catch (e) {
+        typingEl?.remove();
+        appendMsg('assistant', '抱歉，请求出错: ' + e.message);
+    } finally {
+        isBusy = false;
+        sendBtn.disabled = false;
+    }
+}
+
+function streamViaWebSocket(query, contentEl) {
+    return new Promise((resolve) => {
+        if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(proto + '//' + location.host + '/api/stream');
+        let buf = '';
+
+        ws.onopen = () => ws.send(JSON.stringify({ query, source_filter: sourceFilter.value, session_id: sessionId }));
+        ws.onmessage = (e) => {
+            const d = JSON.parse(e.data);
+            if (d.type === 'token') { buf += d.token; contentEl.innerHTML = DOMPurify.sanitize(marked.parse(buf)); scrollDown(); }
+            if (d.type === 'end') { ws.close(); resolve(); }
+            if (d.type === 'error') { contentEl.innerHTML += '<p style="color:red">[错误: ' + d.error + ']</p>'; ws.close(); resolve(); }
+        };
+        ws.onerror = () => { contentEl.innerHTML += '<p style="color:red">[连接错误]</p>'; resolve(); };
+        ws.onclose = () => resolve();
+    });
+}
+
+// ── UI helpers ──
+function appendMsg(role, content, opts = {}) {
+    const div = document.createElement('div');
+    div.className = 'msg ' + (role === 'user' ? 'user' : 'assistant');
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.innerHTML = role === 'user' ? escapeHtml(content) : DOMPurify.sanitize(marked.parse(content));
+    div.appendChild(bubble);
+
+    if (opts.tier || opts.time) {
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        if (opts.tier === 'fast') meta.innerHTML = '<span class="tier-tag fast"><i class="fas fa-bolt"></i> 快速匹配</span>';
+        if (opts.tier === 'deep') meta.innerHTML = '<span class="tier-tag deep"><i class="fas fa-brain"></i> 深度推理</span>';
+        if (opts.time) meta.innerHTML += ' ' + (opts.time * 1000).toFixed(0) + 'ms';
+        div.appendChild(meta);
+    }
+
+    chatBody.appendChild(div);
+    scrollDown();
+    return div;
+}
+
+function appendTyping() {
+    const div = document.createElement('div');
+    div.className = 'msg assistant';
+    div.innerHTML = '<div class="bubble"><div class="typing"><span></span><span></span><span></span></div></div>';
+    chatBody.appendChild(div);
+    scrollDown();
+    return div;
+}
+
+function appendStreamBubble() {
+    const div = document.createElement('div');
+    div.className = 'msg assistant';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.innerHTML = '';
+    div.appendChild(bubble);
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.innerHTML = '<span class="tier-tag deep"><i class="fas fa-brain"></i> 深度推理</span>';
+    div.appendChild(meta);
+
+    chatBody.appendChild(div);
+    scrollDown();
+    return bubble;
+}
+
+function askHint(btn) {
+    input.value = btn.textContent.trim();
+    sendMessage();
+}
+
+function scrollDown() { chatBody.scrollTop = chatBody.scrollHeight; }
+function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+</script>
+</body>
+</html>

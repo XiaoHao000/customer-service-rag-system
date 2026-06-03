@@ -1,0 +1,13 @@
+__pycache__/
+.git/
+.venv/
+.vscode/
+.idea/
+logs/
+*.log
+docker/
+.env
+.env.local
+*.pyc
+.DS_Store
+*.csv
